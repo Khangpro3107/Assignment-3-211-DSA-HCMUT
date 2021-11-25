@@ -235,6 +235,15 @@ struct LL
         prev = NULL;
         count = 0;
     }
+    bool has_non_reserved_keywords() {
+        if (count == 0) return true;
+        node* i = head;
+        while (i) {
+            if (i->data == "string" || i->data == "number") return false;
+            i = i->next;
+        }
+        return true;
+    }
 };
 
 class Symbol {
@@ -297,7 +306,7 @@ inline bool split(string str, string* result) {
             if (!my_regex.isNumber(result[2])) return false;
         }
         if (result[0] != "INSERT" || !my_regex.isIdentifier(result[1])) return false;
-        // if (result[1]=="") reserved keywords?
+        if (result[1] == "number" || result[1] == "string") return false;
     }
     else if (str[0] == 'A') {
         size_t space1 = str.find_first_of(' ');
@@ -307,8 +316,8 @@ inline bool split(string str, string* result) {
         result[1] = temp_str.substr(0, space2);
         result[2] = temp_str.substr(space2 + 1);
         if (result[0] != "ASSIGN" || !my_regex.isIdentifier(result[1])) return false;
-        /*if (result[1] == "number" || result[1] == "string" || result[1] == "true" || result[1] == "false") return false;
-        if (result[2] == "number" || result[2] == "string" || result[2] == "true" || result[2] == "false") return false;*/
+        if (result[1] == "string" || result[1] == "number") return false;
+        if (result[2] == "string" || result[2] == "number") return false;
         if (!my_regex.isIdentifier(result[2]) && !my_regex.isFunctionCall(result[2]) && !my_regex.isNumber(result[2]) && !my_regex.isString(result[2])) return false;
     }
     else if (str[0] == 'L') {
@@ -316,7 +325,7 @@ inline bool split(string str, string* result) {
         result[0] = str.substr(0, space1);
         result[1] = str.substr(space1 + 1);
         if (result[0] != "LOOKUP" || !my_regex.isIdentifier(result[1])) return false;
-        // if (result[1] == "number" || result[1] == "string" || result[1] == "true" || result[1] == "false") return false;
+        if (result[1] == "number" || result[1] == "string") return false;
     }
     else if (str[0] == 'B' || str[0] == 'E' || str[0] == 'P') {
         if (str != "END" && str != "BEGIN" && str != "PRINT") return false;
@@ -327,7 +336,6 @@ inline bool split(string str, string* result) {
         result[0] = str.substr(0, space1);
         result[1] = str.substr(space1 + 1);
         if (result[0] != "CALL" || !my_regex.isFunctionCall(result[1])) return false;
-        // reserved keywords?
     }
     else return false;
     return true;
@@ -528,6 +536,7 @@ public:
                 if (res_type2 == any) table[res_index2].type = res_type1;
                 else throw TypeMismatch(cmd);
             }
+            else throw TypeMismatch(cmd);
 
             int num_probe1 = 0, num_probe2 = 0;
             string key = label_to_key(tokens[1], res_scope1);
@@ -560,7 +569,15 @@ public:
             string functionName = "";
             LL<string> value_params = LL<string>();
             split(tokens[2], value_params, functionName);
-            
+
+            if (functionName == "string" || functionName == "number") {
+                value_params.destroy();
+                throw InvalidInstruction(cmd);
+            }
+            if (!value_params.has_non_reserved_keywords()) {
+                value_params.destroy();
+                throw InvalidInstruction(cmd);
+            }
             if (!find_all(functionName, res_name2, res_scope2, res_type2, res_index2)) {
                 value_params.destroy();
                 throw Undeclared(functionName);
@@ -578,8 +595,11 @@ public:
                 else index = double_probing(key_fn, num_probe, this->capacity, this->hash_const1);
                 if (res_index2 == index) break;
             }
-
-            int the_smaller_size = table[res_index2].num_of_parameters < value_params.count ? table[res_index2].num_of_parameters : value_params.count;
+            if (table[res_index2].num_of_parameters != value_params.count) {
+                value_params.destroy();
+                throw TypeMismatch(cmd);
+            }
+            int the_smaller_size = table[res_index2].num_of_parameters;
             
             string* value_params_arr = new string[value_params.count];
             value_params.copy_to_arr(value_params_arr);
@@ -693,14 +713,7 @@ public:
                     throw InvalidInstruction(cmd);
                 }
             }
-
-            if (table[res_index2].num_of_parameters != value_params.count) {
-                value_params.destroy();
-                delete[] type_params_arr;
-                delete[] value_params_arr;
-                throw TypeMismatch(cmd);
-            }
-
+            
             string res_name1 = "";
             int res_scope1 = 0, res_index1 = 0;
             Type res_type1;
@@ -781,7 +794,14 @@ public:
         string functionName = "";
         LL<string> value_params = LL<string>();
         split(tokens[1], value_params, functionName);
-
+        if (functionName == "string" || functionName == "number") {
+            value_params.destroy();
+            throw InvalidInstruction(cmd);
+        }
+        if (!value_params.has_non_reserved_keywords()) {
+            value_params.destroy();
+            throw InvalidInstruction(cmd);
+        }
         string res_name = "";
         int res_index = 0, res_scope = 0;
         Type res_type = any;
@@ -804,12 +824,15 @@ public:
             else index = double_probing(key_fn, num_probe, this->capacity, this->hash_const1);
             if (index == res_index) break;
         }
-
+        if (table[res_index].num_of_parameters != value_params.count) {
+            value_params.destroy();
+            throw TypeMismatch(cmd);
+        }
         string* value_params_arr = new string[value_params.count];
         value_params.copy_to_arr(value_params_arr);
         Type* type_params_arr = new Type[table[res_index].num_of_parameters];
         table[res_index].parameters_type.copy_to_arr(type_params_arr);
-        int the_smaller_size = table[res_index].num_of_parameters < value_params.count ? table[res_index].num_of_parameters : value_params.count;
+        int the_smaller_size = table[res_index].num_of_parameters;
 
         for (int i = 0; i < the_smaller_size; i++) {
             string current_value = value_params_arr[i];
@@ -891,13 +914,6 @@ public:
                 throw InvalidInstruction(cmd);
             }
         }
-        if (table[res_index].num_of_parameters != value_params.count) {
-            value_params.destroy();
-            delete[] value_params_arr;
-            delete[] type_params_arr;
-            throw TypeMismatch(cmd);
-        }
-
         table[res_index].parameters_type.copy_from_arr(type_params_arr);
         cout << num_probe << endl;
         value_params.destroy();
@@ -909,10 +925,11 @@ public:
     }
     void end() {
         if (this->current_scope == 0) throw UnknownBlock();
-        for (int i = 0; i < this->capacity; i++) {
+        for (int i = 0; i < this->capacity && this->count >= 0; i++) {
             if (table[i].scope == this->current_scope) {
                 table[i].parameters_type.destroy();
                 table[i] = Symbol();
+                this->count--;
             }
         }
         this->current_scope--;
@@ -925,12 +942,14 @@ public:
         cout << res_index << endl;
     }
     void print() {
+        if (this->count == 0) return;
         int cnt = 0;
         for (int i = 0; i < this->capacity; i++) {
             if (table[i].name != "") {
                 cnt++;
                 if (cnt == this->count) {
                     cout << i << ' ' << table[i].name << "/" << "/" << table[i].scope;
+                    break;
                 }
                 else cout << i << ' ' << table[i].name << "/" << "/" << table[i].scope << ';';
             }
