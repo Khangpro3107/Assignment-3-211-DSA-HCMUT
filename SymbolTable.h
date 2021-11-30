@@ -235,11 +235,13 @@ struct LL
         prev = NULL;
         count = 0;
     }
-    bool has_non_reserved_keywords() {
+    bool valid_params() {
         if (count == 0) return true;
+        Regex my_regex = Regex();
         node* i = head;
         while (i) {
             if (i->data == "string" || i->data == "number") return false;
+            if (!my_regex.isNumber(i->data) && !my_regex.isString(i->data) && !my_regex.isIdentifier(i->data)) return false;
             i = i->next;
         }
         return true;
@@ -574,7 +576,7 @@ public:
                 value_params.destroy();
                 throw InvalidInstruction(cmd);
             }
-            if (!value_params.has_non_reserved_keywords()) {
+            if (!value_params.valid_params()) {
                 value_params.destroy();
                 throw InvalidInstruction(cmd);
             }
@@ -582,7 +584,7 @@ public:
                 value_params.destroy();
                 throw Undeclared(functionName);
             }
-            if (res_type2 != func_any && res_type2 != func_num && res_type2 != func_str) {
+            if (res_type2 != func_any && res_type2 != func_num && res_type2 != func_str && res_type2 != func_void) {
                 value_params.destroy();
                 throw TypeMismatch(cmd);
             }
@@ -767,6 +769,12 @@ public:
                     throw TypeMismatch(cmd);
                 }
             }
+            else if (res_type2 == func_void) {
+                value_params.destroy();
+                delete[] value_params_arr;
+                delete[] type_params_arr;
+                throw TypeMismatch(cmd);
+            }
             else {
                 throw invalid_argument("This should not happen!");
             }
@@ -798,7 +806,7 @@ public:
             value_params.destroy();
             throw InvalidInstruction(cmd);
         }
-        if (!value_params.has_non_reserved_keywords()) {
+        if (!value_params.valid_params()) {
             value_params.destroy();
             throw InvalidInstruction(cmd);
         }
