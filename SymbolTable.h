@@ -240,7 +240,7 @@ struct LL
         Regex my_regex = Regex();
         node* i = head;
         while (i) {
-            if (i->data == "string" || i->data == "number") return false;
+            if (i->data == "string" || i->data == "number" || i->data == "void") return false;
             if (!my_regex.isNumber(i->data) && !my_regex.isString(i->data) && !my_regex.isIdentifier(i->data)) return false;
             i = i->next;
         }
@@ -308,7 +308,7 @@ inline bool split(string str, string* result) {
             if (!my_regex.isNumber(result[2])) return false;
         }
         if (result[0] != "INSERT" || !my_regex.isIdentifier(result[1])) return false;
-        if (result[1] == "number" || result[1] == "string") return false;
+        if (result[1] == "number" || result[1] == "string" || result[1] == "void") return false;
     }
     else if (str[0] == 'A') {
         size_t space1 = str.find_first_of(' ');
@@ -318,8 +318,8 @@ inline bool split(string str, string* result) {
         result[1] = temp_str.substr(0, space2);
         result[2] = temp_str.substr(space2 + 1);
         if (result[0] != "ASSIGN" || !my_regex.isIdentifier(result[1])) return false;
-        if (result[1] == "string" || result[1] == "number") return false;
-        if (result[2] == "string" || result[2] == "number") return false;
+        if (result[1] == "string" || result[1] == "number" || result[1] == "void") return false;
+        if (result[2] == "string" || result[2] == "number" || result[2] == "void") return false;
         if (!my_regex.isIdentifier(result[2]) && !my_regex.isFunctionCall(result[2]) && !my_regex.isNumber(result[2]) && !my_regex.isString(result[2])) return false;
     }
     else if (str[0] == 'L') {
@@ -327,7 +327,7 @@ inline bool split(string str, string* result) {
         result[0] = str.substr(0, space1);
         result[1] = str.substr(space1 + 1);
         if (result[0] != "LOOKUP" || !my_regex.isIdentifier(result[1])) return false;
-        if (result[1] == "number" || result[1] == "string") return false;
+        if (result[1] == "number" || result[1] == "string" || result[1] == "void") return false;
     }
     else if (str[0] == 'B' || str[0] == 'E' || str[0] == 'P') {
         if (str != "END" && str != "BEGIN" && str != "PRINT") return false;
@@ -338,6 +338,7 @@ inline bool split(string str, string* result) {
         result[0] = str.substr(0, space1);
         result[1] = str.substr(space1 + 1);
         if (result[0] != "CALL" || !my_regex.isFunctionCall(result[1])) return false;
+        if (result[1] == "number" || result[1] == "string" || result[1] == "void") return false;
     }
     else return false;
     return true;
@@ -450,6 +451,7 @@ public:
             throw Overflow(cmd);
         }
         else {
+            if (current_scope != 0) throw InvalidDeclaration(tokens[1]);
             int num_probe = 0;
             string key = label_to_key(tokens[1], current_scope);
             for (; num_probe < capacity * 2; num_probe++) {
@@ -458,7 +460,6 @@ public:
                 else if (mode == quad) index = quadratic_probing(key, num_probe, capacity, hash_const1, hash_const2);
                 else index = double_probing(key, num_probe, capacity, hash_const1);
                 if (table[index].name == "") {
-                    if (current_scope != 0) throw InvalidDeclaration(tokens[1]);
                     table[index] = Symbol(tokens[1], current_scope);
                     table[index].num_of_parameters = stoi(tokens[2]);
                     table[index].type = func_any;
@@ -523,7 +524,7 @@ public:
             int res_scope2 = 0, res_index2 = 0;
             Type res_type2;
             if (!find_all(tokens[2], res_name2, res_scope2, res_type2, res_index2)) throw Undeclared(tokens[2]);
-
+            if (res_type2 == func_any || res_type2 == func_num || res_type2 == func_str || res_type2 == func_void) throw InvalidInstruction(cmd);
             string res_name1 = "";
             int res_scope1 = 0, res_index1 = 0;
             Type res_type1;
@@ -567,12 +568,12 @@ public:
             string res_name2 = "";
             int res_scope2 = 0, res_index2 = 0;
             Type res_type2;
-            
+
             string functionName = "";
             LL<string> value_params = LL<string>();
             split(tokens[2], value_params, functionName);
 
-            if (functionName == "string" || functionName == "number") {
+            if (functionName == "string" || functionName == "number" || functionName == "void") {
                 value_params.destroy();
                 throw InvalidInstruction(cmd);
             }
@@ -586,7 +587,7 @@ public:
             }
             if (res_type2 != func_any && res_type2 != func_num && res_type2 != func_str && res_type2 != func_void) {
                 value_params.destroy();
-                throw TypeMismatch(cmd);
+                throw InvalidInstruction(cmd);
             }
             int num_probe = 0;
             string key_fn = label_to_key(functionName, res_scope2);
@@ -716,6 +717,13 @@ public:
                 }
             }
             
+            if (res_type2 == func_void) {
+                value_params.destroy();
+                delete[] value_params_arr;
+                delete[] type_params_arr;
+                throw TypeMismatch(cmd);
+            }
+
             string res_name1 = "";
             int res_scope1 = 0, res_index1 = 0;
             Type res_type1;
@@ -802,7 +810,7 @@ public:
         string functionName = "";
         LL<string> value_params = LL<string>();
         split(tokens[1], value_params, functionName);
-        if (functionName == "string" || functionName == "number") {
+        if (functionName == "string" || functionName == "number" || functionName == "void") {
             value_params.destroy();
             throw InvalidInstruction(cmd);
         }
@@ -817,11 +825,10 @@ public:
             value_params.destroy();
             throw Undeclared(functionName);
         }
-        if (res_type != func_any && res_type != func_void) {
+        if (res_type == any || res_type == str || res_type == num) {
             value_params.destroy();
-            throw TypeMismatch(cmd);
+            throw InvalidInstruction(cmd);
         }
-        if (res_type == func_any) table[res_index].type = func_void;
 
         string key_fn = label_to_key(functionName, res_scope);
         int num_probe = 0;
@@ -922,7 +929,14 @@ public:
                 throw InvalidInstruction(cmd);
             }
         }
+        if (res_type != func_void && res_type != func_any) {
+            value_params.destroy();
+            delete[] value_params_arr;
+            delete[] type_params_arr;
+            throw TypeMismatch(cmd);
+        }
         table[res_index].parameters_type.copy_from_arr(type_params_arr);
+        if (res_type == func_any) table[res_index].type = func_void;
         cout << num_probe << endl;
         value_params.destroy();
         delete[] value_params_arr;
